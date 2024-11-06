@@ -148,32 +148,42 @@ func (d Dialector) RewriteWhere(c clause.Clause, builder clause.Builder) {
 	}
 }
 
+func (d Dialector) getLimitRows(limit clause.Limit) (limitRows int, hasLimit bool) {
+	if l := limit.Limit; l != nil {
+		limitRows = *l
+		hasLimit = limitRows > 0
+	}
+	return
+}
+
 func (d Dialector) RewriteLimit(c clause.Clause, builder clause.Builder) {
 	if limit, ok := c.Expression.(clause.Limit); ok {
+		limitRows, hasLimit := d.getLimitRows(limit)
+
 		if stmt, ok := builder.(*gorm.Statement); ok {
-			if _, ok := stmt.Clauses["ORDER BY"]; !ok {
+			if _, hasOrderBy := stmt.Clauses["ORDER BY"]; !hasOrderBy && hasLimit {
 				s := stmt.Schema
-				builder.WriteString("ORDER BY ")
+				_, _ = builder.WriteString("ORDER BY ")
 				if s != nil && s.PrioritizedPrimaryField != nil {
 					builder.WriteQuoted(s.PrioritizedPrimaryField.DBName)
-					builder.WriteByte(' ')
+					_ = builder.WriteByte(' ')
 				} else {
-					builder.WriteString("(SELECT NULL FROM ")
-					builder.WriteString(d.DummyTableName())
-					builder.WriteString(")")
+					_, _ = builder.WriteString("(SELECT NULL FROM ")
+					_, _ = builder.WriteString(d.DummyTableName())
+					_, _ = builder.WriteString(")")
 				}
 			}
 		}
 
 		if offset := limit.Offset; offset > 0 {
-			builder.WriteString(" OFFSET ")
-			builder.WriteString(strconv.Itoa(offset))
-			builder.WriteString(" ROWS")
+			_, _ = builder.WriteString(" OFFSET ")
+			builder.AddVar(builder, offset)
+			_, _ = builder.WriteString(" ROWS")
 		}
-		if limit := limit.Limit; limit > 0 {
-			builder.WriteString(" FETCH NEXT ")
-			builder.WriteString(strconv.Itoa(limit))
-			builder.WriteString(" ROWS ONLY")
+		if hasLimit {
+			_, _ = builder.WriteString(" FETCH NEXT ")
+			builder.AddVar(builder, limitRows)
+			_, _ = builder.WriteString(" ROWS ONLY")
 		}
 	}
 }
